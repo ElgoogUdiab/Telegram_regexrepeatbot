@@ -6,6 +6,8 @@ import logging
 import requests
 import re
 import rstr
+import datetime
+import time
 from copy import copy
 
 # Enable logging
@@ -186,10 +188,19 @@ def disable(update, context):
     elif len(context.args) > 1:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /disable [Seconds]")
         return
-    patterns["enabled"]=False
+    patterns[str(update.effective_chat.id)]["enabled"]=False
     if timer:
-        # Re_enable job init
-        pass
+        if timer > 3600:
+            reply = f"The bot is temporarily disabled for {round(timer/3600, 2)} hours."
+        elif timer > 60:
+            reply = f"The bot is temporarily disabled for {round(timer/60, 2)} minutes."
+        else:
+            reply = f"The bot is temporarily disabled for {timer} seconds."
+        reply+= f"\nAnd will be re-enabled at {datetime.datetime.fromtimestamp(int(time.time()+timer))}."
+        if 'job' in context.chat_data:
+            old_job = context.chat_data['job']
+            old_job.schedule_removal()
+        new_job = context.job_queue.run_once(re_enable, timer, context={"chat_id": update.effective_chat.id, "target": True})
     else:
         reply = "The bot is disabled in this chat."
     update_pattern(str(update.effective_chat.id))
@@ -199,7 +210,7 @@ def disable(update, context):
 disable_handler = CommandHandler('disable', disable, pass_args=True)
 dispatcher.add_handler(disable_handler)
 def enable(update, context):
-        timer = None
+    timer = None
     if len(context.args) == 1:
         try:
             timer = float(context.args[0])
@@ -212,10 +223,20 @@ def enable(update, context):
     elif len(context.args) > 1:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /disable [Seconds]")
         return
-    patterns["enabled"]=True
+    patterns[str(update.effective_chat.id)]["enabled"]=True
     if timer:
         # Re_disable job init
-        pass
+        if timer > 3600:
+            reply = f"The bot is temporarily enabled for {round(timer/3600, 2)} hours."
+        elif timer > 60:
+            reply = f"The bot is temporarily enabled for {round(timer/60, 2)} minutes."
+        else:
+            reply = f"The bot is temporarily enabled for {timer} seconds."
+        reply+= f"\nAnd will be re-disabled at {datetime.datetime.fromtimestamp(int(time.time()+timer))}."
+        if 'job' in context.chat_data:
+            old_job = context.chat_data['job']
+            old_job.schedule_removal()
+        new_job = context.job_queue.run_once(re_enable, timer, context={"chat_id": update.effective_chat.id, "target": False})
     else:
         reply = "The bot is disabled in this chat."
     update_pattern(str(update.effective_chat.id))
@@ -223,8 +244,12 @@ def enable(update, context):
 
 enable_handler = CommandHandler('enable', enable, pass_args=True)
 dispatcher.add_handler(enable_handler)
-def re_enable(updater, context):
-    pass
+def re_enable(context):
+    job = context.job
+    target = job.context["target"]
+    patterns[str(update.effective_chat.id)]["enabled"]=target
+    update_pattern(str(update.effective_chat.id))
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"The bot is re-{'enabled' if target else 'disabled'} now.")
 
 def error(update, context):
     """Log Errors caused by Updates."""
