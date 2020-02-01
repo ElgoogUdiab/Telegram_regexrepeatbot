@@ -36,8 +36,8 @@ def update_pattern(chat_id, patt=None):
     global patterns
     if not str(chat_id) in patterns:
         patterns.update({str(chat_id): {"enabled": True, "patterns": {}}})
-    if not "enabled" in parrents[str(chat_id)]:
-        parrents[str(chat_id)].update({"enabled": True})
+    if not "enabled" in patterns[str(chat_id)]:
+        patterns[str(chat_id)].update({"enabled": True})
     if patt != None:
         name = patt.pop("name")
         patterns[str(chat_id)]["patterns"].update({name: patt})
@@ -170,7 +170,7 @@ def processing(update, context):
                     response = rstr.xeger(pattern["response"])
                 else:
                     response = pattern["response"]
-                update.message.reply_text(chat_id=update.effective_chat.id, text=response)
+                context.bot.send_message(chat_id=update.effective_chat.id, text=response)
                 break
     return
 echo_handler = MessageHandler(Filters.text, processing)
@@ -249,9 +249,10 @@ dispatcher.add_handler(enable_handler)
 def re_enable(context):
     job = context.job
     target = job.context["target"]
-    patterns[str(update.effective_chat.id)]["enabled"]=target
-    update_pattern(str(update.effective_chat.id))
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"The bot is re-{'enabled' if target else 'disabled'} now.")
+    chat_id = str(job.context["chat_id"])
+    patterns[chat_id]["enabled"]=target
+    update_pattern(chat_id)
+    context.bot.send_message(chat_id=chat_id, text=f"The bot is re-{'enabled' if target else 'disabled'} now.")
 
 def error(update, context):
     """Log Errors caused by Updates."""
