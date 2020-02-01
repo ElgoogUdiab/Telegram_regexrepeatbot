@@ -32,8 +32,9 @@ url = "https://{lang}.wikipedia.org/wiki/Special:Random"
 def update_pattern(chat_id, patt):
     global patterns
     if not str(chat_id) in patterns:
-        patterns.update({str(chat_id): {"enabled": True}})
-    patterns[str(chat_id)].update(patt)
+        patterns.update({str(chat_id): {"enabled": True, "patterns": {}}})
+    name = patt.pop("name")
+    patterns[str(chat_id)]["patterns"].update({name: patt})
     with open("pattern.json", "w") as f:
         json.dump(patterns, f)
 
@@ -47,6 +48,9 @@ PATTERN, RESPONSE_REGEX, RESPONSE_PATTERN = range(3)
 def add_pattern(update, context):
     if len(context.args) != 1:
         context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /add <Rule name>")
+        return ConversationHandler.END
+    if len(context.args[0].encode("utf8")) > 64:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Name too long! Keep it short.")
         return ConversationHandler.END
     data = context.user_data
     data.update({"name": context.args[0]})
@@ -84,11 +88,12 @@ def define_response(update, context):
     if data["is_regex"]:
         pass
     data.update({"response": response})
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is f{response}.\nThis rule should be functioning now.")
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is {response}.\nThis rule should be functioning now.")
     update_pattern(update.effective_chat.id, data)
     data.clear()
     return ConversationHandler.END
-def cancel_add(update, context):
+
+def cancel(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Canceled")
     data = context.user_data
     data.clear()
@@ -104,17 +109,34 @@ add_pattern_handler = ConversationHandler(
         ],
         RESPONSE_PATTERN: [MessageHandler(Filters.text, define_response)]
     },
-    fallbacks = [CommandHandler('cancel', cancel_add, pass_args=True)]
+    fallbacks = [CommandHandler('cancel', cancel, pass_args=True)]
 )
-
 dispatcher.add_handler(add_pattern_handler)
 
-"""
+SELECT = range(1)
 def del_pattern(update, context):
-    pass
-del_pattern_handler = CommandHandler('del', del_pattern, pass_args=True)
-dispatcher.add_handler(del_handler)
+    keyboard = [
+        [InlineKeyboardButton(name, callback_data=name)
+         for name in patterns[str(update.effective_chat.id)]["patterns"]
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"Pick the rule you want to remove.", reply_markup=reply_markup)
+    return SELECT
 
+def select_pattern(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"{context.data}")
+    return ConversationHandler.END
+
+add_pattern_handler = ConversationHandler(
+    entry_points=[CommandHandler('del', del_pattern, pass_args=True)],
+    states = {
+        SELECT: [CallbackQueryHandler(select_pattern)],
+    },
+    fallbacks = [CommandHandler('cancel', cancel, pass_args=True)]
+)
+
+"""
 def show_patterns(update, context):
     pass
 show_pattern_handler = CommandHandler('show', show_patterns)
