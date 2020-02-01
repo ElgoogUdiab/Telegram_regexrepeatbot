@@ -5,10 +5,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import logging
 import requests
 import re
-import rstr
+from xeger import Xeger
 import datetime
 import time
 from copy import copy
+
+# random string generator
+xeger = Xeger(limit=16)
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -79,7 +82,8 @@ def define_pattern(update, context):
     data.update({"pattern": pattern})
     keyboard = [
         [InlineKeyboardButton("Yes", callback_data="Yes"),
-         InlineKeyboardButton("No", callback_data="No")]
+         InlineKeyboardButton("No", callback_data="No")],
+        [InlineKeyboardButton("Not that complex. Just echo.", callback_data="echo")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The pattern is {pattern}.\nWould you please tell me whether the response is a regex or not?", reply_markup=reply_markup)
@@ -94,12 +98,19 @@ def define_whether_regex_true(update, context):
     data.update({"is_regex": True})
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is a regex.\nNow give the response.")
     return RESPONSE_PATTERN
+def define_whether_regex_echo(update, context):
+    data = context.user_data
+    data.update({"is_regex": "echo", "response": "Repeat"})
+    update_pattern(update.effective_chat.id, copy(data))
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Just echo the message.\nThis rule should be functioning now.")
+    data.clear()
+    return ConversationHandler.END
 def define_response(update, context):
     data = context.user_data
     response = update.message.text
     if data["is_regex"]:
         try:
-            rstr.xeger(response)
+            xeger.xeger(response)
         except:
             context.bot.send_message(chat_id=update.effective_chat.id, text=f"Unable to generate string from the given regex!\nPlease try another regex.")
             return RESPONSE_PATTERN
@@ -121,7 +132,8 @@ add_pattern_handler = ConversationHandler(
         PATTERN: [MessageHandler(Filters.text, define_pattern)],
         RESPONSE_REGEX: [
             CallbackQueryHandler(define_whether_regex_true, pattern=r"^Yes$"),
-            CallbackQueryHandler(define_whether_regex_false, pattern=r"^No$")
+            CallbackQueryHandler(define_whether_regex_false, pattern=r"^No$"),
+            CallbackQueryHandler(define_whether_regex_echo, pattern=r"^echo$"),
         ],
         RESPONSE_PATTERN: [MessageHandler(Filters.text, define_response)]
     },
@@ -166,8 +178,10 @@ def processing(update, context):
         for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
             if re.search(pattern["pattern"], message):
                 logger.info("Update \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
-                if pattern["is_regex"]:
-                    response = rstr.xeger(pattern["response"])
+                if pattern["is_regex"] == "echo":
+                    response = message
+                elif pattern["is_regex"]:
+                    response = xeger.xeger(pattern["response"])
                 else:
                     response = pattern["response"]
                 context.bot.send_message(chat_id=update.effective_chat.id, text=response)
