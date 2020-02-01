@@ -129,7 +129,7 @@ def del_pattern(update, context):
         return
     patterns[str(update.effective_chat.id)]["patterns"].pop(name)
     update_pattern(str(update.effective_chat.id))
-
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"Rule deleted.")
 del_pattern_handler = CommandHandler('del', del_pattern, pass_args=True)
 dispatcher.add_handler(del_pattern_handler)
 
