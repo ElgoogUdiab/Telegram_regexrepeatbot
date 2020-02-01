@@ -33,7 +33,7 @@ url = "https://{lang}.wikipedia.org/wiki/Special:Random"
 def update_pattern(chat_id, patt=None):
     global patterns
     if not str(chat_id) in patterns:
-        patterns.update({str(chat_id): {"patterns": {}}})
+        patterns.update({str(chat_id): {"enabled": True, "patterns": {}}})
     if patt != None:
         name = patt.pop("name")
         patterns[str(chat_id)]["patterns"].update({name: patt})
@@ -67,6 +67,9 @@ def define_pattern(update, context):
         re.compile(pattern)
     except re.error:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Seems not a valid regex. Please try again.")
+        return PATTERN
+    if re.search(pattern, ""):
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Seems that this pattern can match any string.\nPlease check your pattern regex and try again.")
         return PATTERN
     data = context.user_data
     data.update({"pattern": pattern})
@@ -154,19 +157,74 @@ dispatcher.add_handler(show_pattern_handler)
 
 def processing(update, context):
     update_pattern(str(update.effective_chat.id))
-    message = update.message.text
-    for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
-        if re.match(pattern["pattern"], message):
-            logger.info("Update \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
-            if pattern["is_regex"]:
-                response = rstr.xeger(pattern["response"])
-            else:
-                response = pattern["response"]
-            context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-            break
+    if patterns[str(update.effective_chat.id)]["enabled"]:
+        message = update.message.text
+        for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
+            if re.search(pattern["pattern"], message):
+                logger.info("Update \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
+                if pattern["is_regex"]:
+                    response = rstr.xeger(pattern["response"])
+                else:
+                    response = pattern["response"]
+                update.message.reply_text(chat_id=update.effective_chat.id, text=response)
+                break
     return
 echo_handler = MessageHandler(Filters.text, processing)
 dispatcher.add_handler(echo_handler)
+
+def disable(update, context):
+    timer = None
+    if len(context.args) == 1:
+        try:
+            timer = float(context.args[0])
+            if timer < 0:
+                context.bot.send_message(chat_id=update.effective_chat.id, text=f"Negative timer make no sense.")
+                return
+        except:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /disable [Seconds]")
+            return
+    elif len(context.args) > 1:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /disable [Seconds]")
+        return
+    patterns["enabled"]=False
+    if timer:
+        # Re_enable job init
+        pass
+    else:
+        reply = "The bot is disabled in this chat."
+    update_pattern(str(update.effective_chat.id))
+    context.bot.send_message(chat_id=update.effective_chat.id, text=reply)
+
+    
+disable_handler = CommandHandler('disable', disable, pass_args=True)
+dispatcher.add_handler(disable_handler)
+def enable(update, context):
+        timer = None
+    if len(context.args) == 1:
+        try:
+            timer = float(context.args[0])
+            if timer < 0:
+                context.bot.send_message(chat_id=update.effective_chat.id, text=f"Negative timer make no sense.")
+                return
+        except:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /disable [Seconds]")
+            return
+    elif len(context.args) > 1:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /disable [Seconds]")
+        return
+    patterns["enabled"]=True
+    if timer:
+        # Re_disable job init
+        pass
+    else:
+        reply = "The bot is disabled in this chat."
+    update_pattern(str(update.effective_chat.id))
+    context.bot.send_message(chat_id=update.effective_chat.id, text=reply)
+
+enable_handler = CommandHandler('enable', enable, pass_args=True)
+dispatcher.add_handler(enable_handler)
+def re_enable(updater, context):
+    pass
 
 def error(update, context):
     """Log Errors caused by Updates."""
