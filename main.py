@@ -36,6 +36,8 @@ def update_pattern(chat_id, patt=None):
     global patterns
     if not str(chat_id) in patterns:
         patterns.update({str(chat_id): {"enabled": True, "patterns": {}}})
+    if not "enabled" in parrents[str(chat_id)]:
+        parrents[str(chat_id)].update({"enabled": True})
     if patt != None:
         name = patt.pop("name")
         patterns[str(chat_id)]["patterns"].update({name: patt})
