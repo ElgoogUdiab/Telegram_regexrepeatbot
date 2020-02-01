@@ -52,14 +52,14 @@ def add_pattern(update, context):
         context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /add <Rule name>")
         return ConversationHandler.END
     name = context.args[0]
-    print(0)
-    print(patterns)
     if name in patterns[str(update.effective_chat.id)]["patterns"]:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"Rule with same name exists!")
         return ConversationHandler.END
     data = context.user_data
     data.update({"name": name})
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Setting rule {name}.\nNow give me the pattern.\nNote: You can cancel at any time by typing /cancel")
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Setting rule {name}.\nNow give me the pattern.\
+    \nRemember to add ^ and $ when necessary.\
+    \nNote: You can cancel at any time by typing /cancel")
     return PATTERN
 def define_pattern(update, context):
     pattern = update.message.text
@@ -91,12 +91,15 @@ def define_response(update, context):
     data = context.user_data
     response = update.message.text
     if data["is_regex"]:
-        pass
+        try:
+            rstr.xeger(response)
+        except:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"Unable to generate string from the given regex!\nPlease try another regex.")
+            return RESPONSE_PATTERN
     data.update({"response": response})
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is {response}.\nThis rule should be functioning now.")
     update_pattern(update.effective_chat.id, copy(data))
     data.clear()
-    print(patterns)
     return ConversationHandler.END
 
 def cancel(update, context):
@@ -139,7 +142,6 @@ def show_patterns(update, context):
         pattern = patterns[str(update.effective_chat.id)]["patterns"]
     except:
         pattern = {}
-    print(pattern)
     if not pattern:
         context.bot.send_message(chat_id=update.effective_chat.id, text=f"No rule here.")
     else:
@@ -149,18 +151,26 @@ def show_patterns(update, context):
 show_pattern_handler = CommandHandler('show', show_patterns)
 dispatcher.add_handler(show_pattern_handler)
 
-"""
-def processing():
-    pass
-echo_handler = MessageHandler(Filter.text, processing)
+
+def processing(update, context):
+    update_pattern(str(update.effective_chat.id))
+    message = update.message.text
+    for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
+        if re.match(pattern["pattern"], message):
+            logger.info("Update \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
+            if pattern["is_regex"]:
+                response = rstr.xeger(pattern["response"])
+            else:
+                response = pattern["response"]
+            context.bot.send_message(chat_id=update.effective_chat.id, text=response)
+            break
+    return
+echo_handler = MessageHandler(Filters.text, processing)
 dispatcher.add_handler(echo_handler)
-"""
 
 def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
 dispatcher.add_error_handler(error)
-
-print(json.dumps(patterns, indent=4, ensure_ascii=False))
 
 updater.start_polling()
