@@ -6,6 +6,7 @@ import logging
 import requests
 import re
 import rstr
+from copy import copy
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -19,7 +20,7 @@ except:
     print("No token! Create file named \"token\" under the same directory with main.py!")
     exit(1)
 try:
-    with open("repeat_pattern.json") as f:
+    with open("pattern.json") as f:
         patterns = json.load(f)
 except:
     patterns = {}
@@ -29,18 +30,19 @@ dispatcher = updater.dispatcher
 
 url = "https://{lang}.wikipedia.org/wiki/Special:Random"
 
-def update_pattern(chat_id, patt):
+def update_pattern(chat_id, patt=None):
     global patterns
     if not str(chat_id) in patterns:
-        patterns.update({str(chat_id): {"enabled": True, "patterns": {}}})
-    name = patt.pop("name")
-    patterns[str(chat_id)]["patterns"].update({name: patt})
+        patterns.update({str(chat_id): {"patterns": {}}})
+    if patt != None:
+        name = patt.pop("name")
+        patterns[str(chat_id)]["patterns"].update({name: patt})
     with open("pattern.json", "w") as f:
         json.dump(patterns, f)
 
 def start(update, context):
     # context.bot.send_message(chat_id=update.effective_chat.id, text=str(update.effective_chat.id))
-    update_pattern(str(update.effective_chat.id), {})
+    update_pattern(str(update.effective_chat.id), None)
 start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 
@@ -49,12 +51,15 @@ def add_pattern(update, context):
     if len(context.args) != 1:
         context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /add <Rule name>")
         return ConversationHandler.END
-    if len(context.args[0].encode("utf8")) > 64:
-        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Name too long! Keep it short.")
+    name = context.args[0]
+    print(0)
+    print(patterns)
+    if name in patterns[str(update.effective_chat.id)]["patterns"]:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Rule with same name exists!")
         return ConversationHandler.END
     data = context.user_data
-    data.update({"name": context.args[0]})
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Setting rule {data['name']}.\nNow give me the pattern.\nNote: You can cancel at any time by typing /cancel")
+    data.update({"name": name})
+    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Setting rule {name}.\nNow give me the pattern.\nNote: You can cancel at any time by typing /cancel")
     return PATTERN
 def define_pattern(update, context):
     pattern = update.message.text
@@ -89,8 +94,9 @@ def define_response(update, context):
         pass
     data.update({"response": response})
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is {response}.\nThis rule should be functioning now.")
-    update_pattern(update.effective_chat.id, data)
+    update_pattern(update.effective_chat.id, copy(data))
     data.clear()
+    print(patterns)
     return ConversationHandler.END
 
 def cancel(update, context):
@@ -113,35 +119,37 @@ add_pattern_handler = ConversationHandler(
 )
 dispatcher.add_handler(add_pattern_handler)
 
-SELECT = range(1)
 def del_pattern(update, context):
-    keyboard = [
-        [InlineKeyboardButton(name, callback_data=name)
-         for name in patterns[str(update.effective_chat.id)]["patterns"]
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"Pick the rule you want to remove.", reply_markup=reply_markup)
-    return SELECT
+    if len(context.args)!=1:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Usage: /del <Rule name>")
+        return
+    name = context.args[0]
+    if not name in patterns[str(update.effective_chat.id)]["patterns"]:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"Rule not found!")
+        return
+    patterns[str(update.effective_chat.id)]["patterns"].pop(name)
+    update_pattern(str(update.effective_chat.id))
 
-def select_pattern(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"{context.data}")
-    return ConversationHandler.END
+del_pattern_handler = CommandHandler('del', del_pattern, pass_args=True)
+dispatcher.add_handler(del_pattern_handler)
 
-add_pattern_handler = ConversationHandler(
-    entry_points=[CommandHandler('del', del_pattern, pass_args=True)],
-    states = {
-        SELECT: [CallbackQueryHandler(select_pattern)],
-    },
-    fallbacks = [CommandHandler('cancel', cancel, pass_args=True)]
-)
 
-"""
 def show_patterns(update, context):
-    pass
+    try:
+        pattern = patterns[str(update.effective_chat.id)]["patterns"]
+    except:
+        pattern = {}
+    print(pattern)
+    if not pattern:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=f"No rule here.")
+    else:
+        out_str = "Here are the rules:\n"
+        out_str += "\n".join([f"{name}: {patt['pattern']} -> {patt['response']}" for name, patt in pattern.items()])
+        context.bot.send_message(chat_id=update.effective_chat.id, text=out_str)
 show_pattern_handler = CommandHandler('show', show_patterns)
 dispatcher.add_handler(show_pattern_handler)
 
+"""
 def processing():
     pass
 echo_handler = MessageHandler(Filter.text, processing)
@@ -152,5 +160,7 @@ def error(update, context):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, context.error)
 dispatcher.add_error_handler(error)
+
+print(json.dumps(patterns, indent=4, ensure_ascii=False))
 
 updater.start_polling()
