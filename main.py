@@ -4,7 +4,7 @@ from telegram.ext import CommandHandler, MessageHandler, ConversationHandler, Fi
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import logging
 import requests
-import re
+import regex as re
 from xeger import Xeger
 import datetime
 import time
