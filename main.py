@@ -9,6 +9,7 @@ from xeger import Xeger
 import datetime
 import time
 from copy import copy
+from shutil import copyfile
 
 # random string generator
 xeger = Xeger(limit=16)
@@ -37,6 +38,8 @@ url = "https://{lang}.wikipedia.org/wiki/Special:Random"
 
 def update_pattern(chat_id, patt=None):
     global patterns
+    # backup
+    copyfile("pattern.json", "pattern.json.backup")
     if not str(chat_id) in patterns:
         patterns.update({str(chat_id): {"enabled": True, "patterns": {}}})
     if not "enabled" in patterns[str(chat_id)]:
