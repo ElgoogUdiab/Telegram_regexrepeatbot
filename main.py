@@ -48,12 +48,13 @@ def update_pattern(chat_id, patt=None):
         json.dump(patterns, f)
 
 def start(update, context):
-    # context.bot.send_message(chat_id=update.effective_chat.id, text=str(update.effective_chat.id))
     update_pattern(str(update.effective_chat.id), None)
 start_handler = CommandHandler('start', start)
 dispatcher.add_handler(start_handler)
 
-PATTERN, RESPONSE_REGEX, RESPONSE_PATTERN = range(3)
+PATTERN, RESPONSE_TYPE, RESPONSE_PATTERN = range(3)
+RESPONSE_TYPE_COUNT = 4
+RESPONSE_CUSTOM, RESPONSE_REGEX, RESPONSE_REPEAT, RESPONSE_REPLACE = range(RESPONSE_TYPE_COUNT)
 def add_pattern(update, context):
     if len(context.args) != 1:
         context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: /add <Rule name>")
@@ -64,9 +65,12 @@ def add_pattern(update, context):
         return ConversationHandler.END
     data = context.user_data
     data.update({"name": name})
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Setting rule {name}.\nNow give me the pattern.\
-    \nRemember to add ^ and $ when necessary.\
-    \nNote: You can cancel at any time by typing /cancel")
+    data["message"] = context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"OK! Setting rule {name}.\nNow give me the pattern.\
+            \nRemember to add ^ and $ when necessary.\
+            \nNote: You can cancel at any time by typing /cancel"
+    )
     return PATTERN
 def define_pattern(update, context):
     pattern = update.message.text
@@ -81,41 +85,83 @@ def define_pattern(update, context):
     data = context.user_data
     data.update({"pattern": pattern})
     keyboard = [
-        [InlineKeyboardButton("Yes", callback_data="Yes"),
-         InlineKeyboardButton("No", callback_data="No")],
-        [InlineKeyboardButton("Not that complex. Just echo.", callback_data="echo")]
+        [InlineKeyboardButton("Regex pattern", callback_data=str(RESPONSE_REGEX)),
+         InlineKeyboardButton("Custom reply", callback_data=str(RESPONSE_CUSTOM))],
+        [InlineKeyboardButton("Just repeat", callback_data=str(RESPONSE_REPEAT)),
+         InlineKeyboardButton("Do some replace", callback_data=str(RESPONSE_REPLACE))]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The pattern is {pattern}.\nWould you please tell me whether the response is a regex or not?", reply_markup=reply_markup)
-    return RESPONSE_REGEX
-def define_whether_regex_false(update, context):
+    context.bot.delete_message(
+        chat_id = data["message"].chat.id,
+        message_id = data["message"].message_id
+    )
+    data["message"] = context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text=f"OK! The pattern is {pattern}.\nPlease choose the response below",
+        reply_markup=reply_markup
+    )
+    return RESPONSE_TYPE
+def define_response_type(update, context):
+    response_type = update.callback_query.data
     data = context.user_data
-    data.update({"is_regex": False})
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is NOT a regex.\nNow give the response.")
-    return RESPONSE_PATTERN
-def define_whether_regex_true(update, context):
-    data = context.user_data
-    data.update({"is_regex": True})
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is a regex.\nNow give the response.")
-    return RESPONSE_PATTERN
-def define_whether_regex_echo(update, context):
-    data = context.user_data
-    data.update({"is_regex": "echo", "response": "Repeat"})
-    update_pattern(update.effective_chat.id, copy(data))
-    context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Just echo the message.\nThis rule should be functioning now.")
-    data.clear()
-    return ConversationHandler.END
+    data.update({"type": response_type})
+    table = {
+        str(RESPONSE_REGEX):(
+            "OK! The reply text a random string that match the given pattern.\nNow give the response pattern.",
+            RESPONSE_PATTERN
+        ),
+        str(RESPONSE_CUSTOM):(
+            "OK! The reply text is a piece of custom text.\nNow give the response.",
+            RESPONSE_PATTERN
+        ),
+        str(RESPONSE_REPLACE):(
+            "OK! The reply text is the trigger text with some replacement.\nNow give the response.",
+            RESPONSE_PATTERN
+        ),
+        str(RESPONSE_REPEAT):(
+            "OK! Just repeat the text.\nThis rule should be functioning now.",
+            ConversationHandler.END
+        ),
+    }
+    context.bot.delete_message(
+        chat_id = data["message"].chat.id,
+        message_id = data["message"].message_id
+    )
+    if table[response_type][1] != ConversationHandler.END:
+        data["message"] = context.bot.send_message(chat_id=update.effective_chat.id, text=table[response_type][0])
+        return table[response_type][1]
+    else:
+        context.bot.send_message(chat_id=update.effective_chat.id, text=table[response_type][0])
+        data.pop("message")
+        update_pattern(update.effective_chat.id, copy(data))
+        data.clear()
+        return ConversationHandler.END
+        
+
 def define_response(update, context):
     data = context.user_data
     response = update.message.text
-    if data["is_regex"]:
+    # Error check with early exit
+    if data["type"] == str(RESPONSE_REGEX):
         try:
             xeger.xeger(response)
         except:
             context.bot.send_message(chat_id=update.effective_chat.id, text=f"Unable to generate string from the given regex!\nPlease try another regex.")
             return RESPONSE_PATTERN
+    elif data["type"] == str(RESPONSE_REPLACE):
+        try:
+            re.sub(data["pattern"], response, "")
+        except:
+            context.bot.send_message(chat_id=update.effective_chat.id, text=f"Unable to do the replacement with given pattern!\nPlease try another regex.")
+            return RESPONSE_PATTERN
+    # Save the setting
     data.update({"response": response})
+    context.bot.delete_message(
+        chat_id = data["message"].chat.id,
+        message_id = data["message"].message_id
+    )
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! The reply text is {response}.\nThis rule should be functioning now.")
+    data.pop("message")
     update_pattern(update.effective_chat.id, copy(data))
     data.clear()
     return ConversationHandler.END
@@ -123,6 +169,10 @@ def define_response(update, context):
 def cancel(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=f"OK! Canceled")
     data = context.user_data
+    context.bot.delete_message(
+        chat_id = data["message"].chat.id,
+        message_id = data["message"].message_id
+    )
     data.clear()
     return ConversationHandler.END
 
@@ -130,10 +180,10 @@ add_pattern_handler = ConversationHandler(
     entry_points=[CommandHandler('add', add_pattern, pass_args=True)],
     states = {
         PATTERN: [MessageHandler(Filters.text, define_pattern)],
-        RESPONSE_REGEX: [
-            CallbackQueryHandler(define_whether_regex_true, pattern=r"^Yes$"),
-            CallbackQueryHandler(define_whether_regex_false, pattern=r"^No$"),
-            CallbackQueryHandler(define_whether_regex_echo, pattern=r"^echo$"),
+        RESPONSE_TYPE: [
+            CallbackQueryHandler(define_response_type,
+                pattern="^("+"|".join("("+str(i)+")" for i in range(RESPONSE_TYPE_COUNT))+")$"
+            ),
         ],
         RESPONSE_PATTERN: [MessageHandler(Filters.text, define_response)]
     },
@@ -178,12 +228,14 @@ def processing(update, context):
         for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
             if re.search(pattern["pattern"], message):
                 logger.info("Update \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
-                if pattern["is_regex"] == "echo":
+                if pattern["type"] == str(RESPONSE_REPEAT):
                     response = message
-                elif pattern["is_regex"]:
+                elif pattern["type"] == str(RESPONSE_REGEX):
                     response = xeger.xeger(pattern["response"])
-                else:
+                elif pattern["type"] == str(RESPONSE_CUSTOM):
                     response = pattern["response"]
+                elif pattern["type"] == str(RESPONSE_REPLACE):
+                    response = re.sub(pattern["pattern"], pattern["response"], message)
                 context.bot.send_message(chat_id=update.effective_chat.id, text=response)
                 break
     return
