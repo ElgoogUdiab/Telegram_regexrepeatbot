@@ -123,7 +123,8 @@ def define_response_type(update, context):
         ),
         str(RESPONSE_REPEAT):(
             "OK! Just repeat the text.\nThis rule should be functioning now.",
-            ConversationHandler.END
+            ConversationHandler.END,
+            "Repeat"
         ),
     }
     context.bot.delete_message(
@@ -136,6 +137,7 @@ def define_response_type(update, context):
     else:
         context.bot.send_message(chat_id=update.effective_chat.id, text=table[response_type][0])
         data.pop("message")
+        data["response"] = table[response_type][2]
         update_pattern(update.effective_chat.id, copy(data))
         data.clear()
         return ConversationHandler.END
