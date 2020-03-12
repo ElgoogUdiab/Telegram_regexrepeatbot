@@ -230,19 +230,34 @@ def processing(update, context):
     update_pattern(str(update.effective_chat.id))
     if patterns[str(update.effective_chat.id)]["enabled"]:
         message = update.message.text
-        for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
-            if re.search(pattern["pattern"], message):
-                logger.info("Update \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
-                if pattern["type"] == str(RESPONSE_REPEAT):
-                    response = message
-                elif pattern["type"] == str(RESPONSE_REGEX):
-                    response = xeger.xeger(pattern["response"])
-                elif pattern["type"] == str(RESPONSE_CUSTOM):
-                    response = pattern["response"]
-                elif pattern["type"] == str(RESPONSE_REPLACE):
-                    response = re.sub(pattern["pattern"], pattern["response"], message)
-                context.bot.send_message(chat_id=update.effective_chat.id, text=response)
-                break
+        # for name, pattern in patterns[str(update.effective_chat.id)]["patterns"].items():
+        #     if re.search(pattern["pattern"], message):
+        # Rewriting by map/reduce
+        match_length = map(
+            lambda name_pattern: (
+                sum(
+                    (span := it.span())[1]-span[0] for it in re.finditer(name_pattern[1]["pattern"], message)
+                ),
+                name_pattern[0]
+            ),
+            patterns[str(update.effective_chat.id)]["patterns"].items()
+        )
+        result = max(match_length, key=lambda x:x[0])
+        if result[0] == 0:
+            # No match was found.
+            return
+        name = result[1]
+        pattern=patterns[str(update.effective_chat.id)]["patterns"][name]
+        logger.info("Message \"%s\" matches rule \"%s\": %s", message, name, str(pattern))
+        if pattern["type"] == str(RESPONSE_REPEAT):
+            response = message
+        elif pattern["type"] == str(RESPONSE_REGEX):
+            response = xeger.xeger(pattern["response"])
+        elif pattern["type"] == str(RESPONSE_CUSTOM):
+            response = pattern["response"]
+        elif pattern["type"] == str(RESPONSE_REPLACE):
+            response = re.sub(pattern["pattern"], pattern["response"], message)
+        context.bot.send_message(chat_id=update.effective_chat.id, text=response)
     return
 echo_handler = MessageHandler(Filters.text, processing)
 dispatcher.add_handler(echo_handler)
